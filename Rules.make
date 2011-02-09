@@ -2,7 +2,7 @@
 PLATFORM=omap3530
 
 # The installation directory of the DVSDK.
-DVSDK_INSTALL_DIR=/Arago/arago-install/dvsdk_3_01_00_10
+DVSDK_INSTALL_DIR=$(HOME)/dvsdk/dvsdk_3_01_00_10
 
 # For backwards compatibility
 DVEVM_INSTALL_DIR=$(DVSDK_INSTALL_DIR)
@@ -17,7 +17,7 @@ BIOSUTILS_INSTALL_DIR=$(DVSDK_INSTALL_DIR)/biosutils_1_02_02
 CE_INSTALL_DIR=$(DVSDK_INSTALL_DIR)/codec_engine_2_25_02_11
 
 # Where the TI C6x codegen tool is installed.
-CODEGEN_INSTALL_DIR=/Arago/TI/TI_CGT_C6000_6.1.12
+CODEGEN_INSTALL_DIR=/opt/TI/C6000CGT6.1.12
 
 
 # Where the DSP Link package is installed.
@@ -67,14 +67,14 @@ USER_XDC_PATH=$(CE_INSTALL_DIR)/examples
 OMAP3503_SDK_INSTALL_DIR=/Arago/arago-install/AM35x-OMAP35x-PSP-SDK-03.00.01.06
 
 # The directory that points to your kernel source directory.
-LINUXKERNEL_INSTALL_DIR=$(OMAP3503_SDK_INSTALL_DIR)/src/kernel/linux-03.00.01.06
+LINUXKERNEL_INSTALL_DIR=$(HOME)/linux-2.6
 
 # The directory that points to your U-boot source directory.
-UBOOT_INSTALL_DIR=$(OMAP3503_SDK_INSTALL_DIR)/src/u-boot/u-boot-03.00.01.06
+UBOOT_INSTALL_DIR=$(OVEROTOP)/tmp/work/overo-angstrom-linux-gnueabi/u-boot-omap3-2010.9+r1+git1e4e5ef0469050f014aee1204dae8a9ab6053e49-r1/git/
 
 # The prefix to be added before the GNU compiler tools (optionally including # path), i.e. "arm-none-linux-gnueabi-" or "/opt/bin/arm-none-linux-gnueabi-".
-CSTOOL_DIR=/codesourcery/arm-2009q1
-CSTOOL_PREFIX=$(CSTOOL_DIR)/bin/arm-none-linux-gnueabi-
+CSTOOL_DIR=$(OVEROTOP)/tmp/sysroots/i686-linux/usr/armv7a
+CSTOOL_PREFIX=$(CSTOOL_DIR)/bin/arm-angstrom-linux-gnueabi-
 
 MVTOOL_DIR=$(CSTOOL_DIR)
 MVTOOL_PREFIX=$(CSTOOL_PREFIX)
