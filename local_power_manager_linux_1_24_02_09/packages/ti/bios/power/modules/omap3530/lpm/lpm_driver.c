@@ -30,6 +30,7 @@
 #endif
 #include <linux/device.h>
 #include <linux/fs.h>
+#include <linux/slab.h>
 #include <linux/kernel.h>
 #include <linux/cdev.h>
 #include <linux/list.h>
@@ -95,7 +96,7 @@ static int enablevicp = -1;
 module_param(enablevicp, int, S_IRUGO);
 
 /* forward declaration of system calls (used by Linux driver) */
-static int lpm_ioctl    (struct inode *inode, struct file *filp,
+static int lpm_ioctl    (struct file *filp,
                          unsigned int cmd, unsigned long args);
 static int lpm_open     (struct inode *inode, struct file *filp);
 static int lpm_release  (struct inode *inode, struct file *filp);
@@ -111,7 +112,7 @@ static void       lpm_os_trace  (char *fmt, ...);
 
 static struct file_operations lpm_fops = {
     .owner =    THIS_MODULE,
-    .ioctl =    lpm_ioctl,
+    .unlocked_ioctl =    lpm_ioctl,
     .open =     lpm_open,
     .release =  lpm_release,
 };
@@ -320,7 +321,7 @@ fail_02:
 /*
  *  ======== lpm_ioctl ========
  */
-static int lpm_ioctl(struct inode *inode, struct file *filp,
+static int lpm_ioctl(struct file *filp,
                      unsigned int cmd, unsigned long args)
 {
     struct LPM_Dev     *dev;
@@ -332,10 +333,11 @@ static int lpm_ioctl(struct inode *inode, struct file *filp,
     TRACE(KERN_ALERT "--> lpm_ioctl, cmd: 0x%X\n", cmd);
 
     /* get pointer to this driver's device object */
-    dev = container_of(inode->i_cdev, struct LPM_Dev, cdev);
+    dev = container_of(filp->f_dentry->d_inode->i_cdev, struct LPM_Dev, cdev);
+    //dev = container_of(NULL, struct LPM_Dev, cdev);
 
     /* set alias to instance object for this device */
-    inst = &dev->inst[iminor(inode)];
+    inst = &dev->inst[iminor(filp->f_dentry->d_inode)];
 
     /* enter critical section */
     if (down_interruptible(&inst->sem)) {

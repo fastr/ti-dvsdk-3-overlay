@@ -143,7 +143,7 @@ static void dma_release_channel(int ch)
 }
 
 
-static int dma_ioctl(struct inode *inode, struct file *filp,
+static int dma_ioctl(struct file *filp,
                      unsigned int cmd, unsigned long args)
 {
     unsigned int __user *argp = (unsigned int __user *) args;
@@ -286,7 +286,7 @@ static int dma_release(struct inode *inode, struct file * filp)
 }
 
 static struct file_operations fops = {
-    .ioctl = dma_ioctl,
+    .unlocked_ioctl = dma_ioctl,
     .release = dma_release,
     .owner = THIS_MODULE
 };

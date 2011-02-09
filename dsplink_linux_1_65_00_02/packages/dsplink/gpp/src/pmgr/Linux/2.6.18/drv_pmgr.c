@@ -400,8 +400,8 @@ DRV_Release (struct inode * inode, struct file * filp) ;
  *  ----------------------------------------------------------------------------
  */
 STATIC
-int
-DRV_Ioctl (struct inode * inode, struct file * filp,
+long
+DRV_Ioctl (struct file * filp,
            unsigned int cmd, unsigned long args) ;
 
 
@@ -495,7 +495,7 @@ STATIC struct file_operations driverOps = {
     open:    DRV_Open,
     flush:   DRV_Flush,
     release: DRV_Release,
-    ioctl:   DRV_Ioctl,
+    unlocked_ioctl:   DRV_Ioctl,
     mmap:    DRV_Mmap,
     read:    DRV_Read,
    .owner = THIS_MODULE
@@ -819,7 +819,7 @@ DRV_Release (struct inode * inode, struct file * filp)
  */
 STATIC
 NORMAL_API
-int DRV_Ioctl (struct inode * inode, struct file * filp,
+long DRV_Ioctl (struct file * filp,
                unsigned int cmd, unsigned long args)
 {
     DSP_STATUS status   = DSP_SOK ;
@@ -829,7 +829,7 @@ int DRV_Ioctl (struct inode * inode, struct file * filp,
     CMD_Args   apiArgs            ;
 
 
-    TRC_4ENTER ("DRV_Ioctl", inode, filp, cmd, args) ;
+    TRC_4ENTER ("DRV_Ioctl", filp->f_dentry->d_inode, filp, cmd, args) ;
 
     retVal = copy_from_user ((Pvoid) &apiArgs,
                              (const Pvoid) srcAddr,

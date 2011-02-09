@@ -18,6 +18,7 @@
  * cmemk.c
  */
 #include <linux/device.h>
+#include <linux/dma-mapping.h>
 #include <linux/fs.h>
 #include <linux/module.h>
 #include <linux/kernel.h>
@@ -36,6 +37,20 @@
 #include <asm/io.h>
 
 #include <linux/version.h>
+
+#if 0
+#  if LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,36)
+#  define USE_UNLOCKED_IOCTL
+#  else
+#  undef USE_UNLOCKED_IOCTL
+#  endif
+#else
+/*
+ * Just use it regardless of kernel version (since struct file_operations
+ * has contained unlocked_ioctl for a long time now).
+ */
+#  define USE_UNLOCKED_IOCTL
+#endif
 
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,28)
 /*
@@ -197,7 +212,13 @@ MODULE_PARM_DESC(allowOverlap,
     "\n\t\t allocated to kernel physical mem (via mem=xxx)");
 module_param(allowOverlap, int, S_IRUGO);
 
-static DECLARE_MUTEX(cmem_mutex);
+static int useHeapIfPoolUnavailable = 0;
+MODULE_PARM_DESC(useHeapIfPoolUnavailable,
+    "\n\t\t Set to 1 if you want a pool-based allocation request to"
+    "\n\t\t fall back to a heap-based allocation attempt");
+module_param(useHeapIfPoolUnavailable, int, S_IRUGO);
+
+static struct mutex cmem_mutex;
 
 /* Describes a pool buffer */
 typedef struct pool_buffer {
@@ -221,22 +242,29 @@ typedef struct pool_object {
 
 typedef struct registered_user {
     struct list_head element;
-//    struct task_struct *user;
     struct file *filp;
 } registered_user;
 
 pool_object p_objs[NBLOCKS][MAX_POOLS];
 
 /* Forward declaration of system calls */
+#ifdef USE_UNLOCKED_IOCTL
+static long ioctl(struct file *filp, unsigned int cmd, unsigned long args);
+#else
 static int ioctl(struct inode *inode, struct file *filp,
                  unsigned int cmd, unsigned long args);
+#endif
 static int mmap(struct file *filp, struct vm_area_struct *vma);
 static int open(struct inode *inode, struct file *filp);
 static int release(struct inode *inode, struct file *filp);
 
 static struct file_operations cmem_fxns = {
     owner:   THIS_MODULE,
+#ifdef USE_UNLOCKED_IOCTL
+    unlocked_ioctl: ioctl,
+#else
     ioctl:   ioctl,
+#endif
     mmap:    mmap,
     open:    open,
     release: release
@@ -268,7 +296,10 @@ typedef struct HeapMem_Header {
     unsigned long size;
 } HeapMem_Header;
 
-void *HeapMem_alloc(int bi, size_t size, size_t align);
+#define ALLOCRUN 0
+#define DRYRUN 1
+
+void *HeapMem_alloc(int bi, size_t size, size_t align, int dryrun);
 void HeapMem_free(int bi, void *block, size_t size);
 
 /*
@@ -310,7 +341,7 @@ static HeapMem_Header heap_head[NBLOCKS] = {
  *    2. Have a size that is a multiple of HEAP_ALIGN
  *
  */
-void *HeapMem_alloc(int bi, size_t reqSize, size_t reqAlign)
+void *HeapMem_alloc(int bi, size_t reqSize, size_t reqAlign, int dryrun)
 {
     HeapMem_Header *prevHeader, *newHeader, *curHeader;
     char *allocAddr;
@@ -382,6 +413,10 @@ void *HeapMem_alloc(int bi, size_t reqSize, size_t reqAlign)
 
             /* Set the pointer that will be returned. Alloc from front */
             allocAddr = (char *)((unsigned long)curHeader + offset);
+
+            if (dryrun) {
+                return ((void *)allocAddr);
+            }
 
             /*
              *  Determine the remaining memory after the allocated block.
@@ -623,7 +658,7 @@ static void dump_lists(int bi, int idx)
     struct list_head *e;
     struct pool_buffer *entry;
 
-    if (down_interruptible(&cmem_mutex)) {
+    if (mutex_lock_interruptible(&cmem_mutex)) {
         return;
     }
 
@@ -645,7 +680,7 @@ static void dump_lists(int bi, int idx)
             entry->id, entry->physp);
     }
 
-    up(&cmem_mutex);
+    mutex_unlock(&cmem_mutex);
 }
 #endif
 
@@ -799,7 +834,7 @@ static void cmem_seq_stop(struct seq_file *s, void *v)
 {
     __D("cmem_seq_stop: v=%p\n", v);
 
-    up(&cmem_mutex);
+    mutex_unlock(&cmem_mutex);
 }
 
 static void *cmem_seq_start(struct seq_file *s, loff_t *pos)
@@ -807,7 +842,7 @@ static void *cmem_seq_start(struct seq_file *s, loff_t *pos)
     struct list_head *listp;
     int total_num;
 
-    if (down_interruptible(&cmem_mutex)) {
+    if (mutex_lock_interruptible(&cmem_mutex)) {
         return ERR_PTR(-ERESTARTSYS);
     }
 
@@ -1076,8 +1111,12 @@ struct block_struct {
     size_t size;
 };
 
+#ifdef USE_UNLOCKED_IOCTL
+static long ioctl(struct file *filp, unsigned int cmd, unsigned long args)
+#else
 static int ioctl(struct inode *inode, struct file *filp,
                  unsigned int cmd, unsigned long args)
+#endif
 {
     unsigned int __user *argp = (unsigned int __user *) args;
     struct list_head *freelistp = NULL;
@@ -1090,7 +1129,8 @@ static int ioctl(struct inode *inode, struct file *filp,
     struct registered_user *user;
     unsigned long physp;
     unsigned long virtp, virtp_end;
-    size_t reqsize, size, align;
+    size_t reqsize, align;
+    size_t size = 0;
     int delta = MAXTYPE(int);
     int pool = -1;
     int i;
@@ -1127,16 +1167,15 @@ static int ioctl(struct inode *inode, struct file *filp,
                 return -EINVAL;
             }
 
-
-            if (down_interruptible(&cmem_mutex)) {
+            if (mutex_lock_interruptible(&cmem_mutex)) {
                 return -ERESTARTSYS;
             }
 
-            virtp = (unsigned long)HeapMem_alloc(bi, size, align);
+            virtp = (unsigned long)HeapMem_alloc(bi, size, align, ALLOCRUN);
             if (virtp == (unsigned long)NULL) {
                 __E("ioctl: failed to allocate heap buffer of size %#x\n",
                     size);
-                up(&cmem_mutex);
+                mutex_unlock(&cmem_mutex);
                 return -ENOMEM;
             }
 
@@ -1145,7 +1184,7 @@ static int ioctl(struct inode *inode, struct file *filp,
             if (!entry) {
                 __E("ioctl: failed to kmalloc pool_buffer struct for heap");
                 HeapMem_free(bi, (void *)virtp, size);
-                up(&cmem_mutex);
+                mutex_unlock(&cmem_mutex);
                 return -ENOMEM;
             }
 
@@ -1162,11 +1201,10 @@ static int ioctl(struct inode *inode, struct file *filp,
             list_add_tail(&entry->element, busylistp);
 
             user = kmalloc(sizeof(struct registered_user), GFP_KERNEL);
-//          user->user = current;
             user->filp = filp;
             list_add(&user->element, &entry->users);
 
-            up(&cmem_mutex);
+            mutex_unlock(&cmem_mutex);
 
             if (put_user(physp, argp)) {
                 return -EFAULT;
@@ -1207,7 +1245,7 @@ static int ioctl(struct inode *inode, struct file *filp,
             freelistp = &p_objs[bi][pool].freelist;
             busylistp = &p_objs[bi][pool].busylist;
 
-            if (down_interruptible(&cmem_mutex)) {
+            if (mutex_lock_interruptible(&cmem_mutex)) {
                 return -ERESTARTSYS;
             }
 
@@ -1215,7 +1253,7 @@ static int ioctl(struct inode *inode, struct file *filp,
             if (e == freelistp) {
                 __E("ALLOC%s: No free buffers available for pool %d\n",
                     cmd & CMEM_CACHED ? "CACHED" : "", pool);
-                up(&cmem_mutex);
+                mutex_unlock(&cmem_mutex);
                 return -ENOMEM;
             }
             entry = list_entry(e, struct pool_buffer, element);
@@ -1224,7 +1262,7 @@ static int ioctl(struct inode *inode, struct file *filp,
             allocDesc.alloc_pool_outparams.size = p_objs[bi][pool].size;
 
             if (copy_to_user(argp, &allocDesc, sizeof(allocDesc))) {
-                up(&cmem_mutex);
+                mutex_unlock(&cmem_mutex);
                 return -EFAULT;
             }
 
@@ -1234,11 +1272,10 @@ static int ioctl(struct inode *inode, struct file *filp,
             list_add(e, busylistp);
 
             user = kmalloc(sizeof(struct registered_user), GFP_KERNEL);
-//          user->user = current;
             user->filp = filp;
             list_add(&user->element, &entry->users);
 
-            up(&cmem_mutex);
+            mutex_unlock(&cmem_mutex);
 
             __D("ALLOC%s: allocated a buffer at %#lx (phys address)\n",
                 cmd & CMEM_CACHED ? "CACHED" : "", entry->physp);
@@ -1281,7 +1318,7 @@ static int ioctl(struct inode *inode, struct file *filp,
                 }
             }
 
-            if (down_interruptible(&cmem_mutex)) {
+            if (mutex_lock_interruptible(&cmem_mutex)) {
                 return -ERESTARTSYS;
             }
 
@@ -1317,14 +1354,14 @@ static int ioctl(struct inode *inode, struct file *filp,
                     __E("FREE%s%s: Not a registered user of physical buffer %#lx\n",
                         cmd & CMEM_HEAP ? "HEAP" : "",
                         cmd & CMEM_PHYS ? "PHYS" : "", physp);
-                    up(&cmem_mutex);
+                    mutex_unlock(&cmem_mutex);
 
                     return -EFAULT;
                 }
 
                 if (registeredlistp->next == registeredlistp) {
                     /* no more registered users, free buffer */
-                    if (cmd & CMEM_HEAP) {
+                    if (pool == heap_pool[bi]) {
                         if (!(cmd & CMEM_PHYS)) {
                             /*
                              * Need to invalidate possible cached entry for
@@ -1334,7 +1371,13 @@ static int ioctl(struct inode *inode, struct file *filp,
                              */
                             virtp_end = virtp + size;
 #ifdef USE_CACHE_VOID_ARG
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,34)
+                            dmac_map_area((void *)virtp, size, DMA_FROM_DEVICE);
+                            outer_inv_range(__pa((u32)(void *)virtp),
+                                            __pa((u32)(void *)virtp_end));
+#else
                             dmac_inv_range((void *)virtp, (void *)virtp_end);
+#endif
 #else
                             dmac_inv_range(virtp, virtp_end);
 #endif
@@ -1357,7 +1400,7 @@ static int ioctl(struct inode *inode, struct file *filp,
                 }
             }
 
-            up(&cmem_mutex);
+            mutex_unlock(&cmem_mutex);
 
             if (!entry) {
                 __E("Failed to free memory at %#lx\n", physp);
@@ -1367,7 +1410,7 @@ static int ioctl(struct inode *inode, struct file *filp,
 #ifdef __DEBUG
             dump_lists(bi, pool);
 #endif
-            if (cmd & CMEM_HEAP) {
+            if (pool == heap_pool[bi]) {
                 allocDesc.free_outparams.size = size;
             }
             else {
@@ -1460,7 +1503,7 @@ static int ioctl(struct inode *inode, struct file *filp,
                 return -EINVAL;
             }
 
-            if (down_interruptible(&cmem_mutex)) {
+            if (mutex_lock_interruptible(&cmem_mutex)) {
                 return -ERESTARTSYS;
             }
 
@@ -1483,10 +1526,32 @@ static int ioctl(struct inode *inode, struct file *filp,
                 }
             }
 
-            up(&cmem_mutex);
+            if (pool == -1 && heap_pool[bi] != -1) {
+                if (useHeapIfPoolUnavailable) {
+                    /* no pool buffer available, try heap */
+
+                    virtp = (unsigned long)HeapMem_alloc(bi, reqsize,
+                                                         HEAP_ALIGN, DRYRUN);
+                    if (virtp != (unsigned long)NULL) {
+                        /*
+                         * Indicate heap pool with magic negative value.
+                         * -1 indicates no pool and no heap.
+                         * -2 indicates no pool but heap available and allowed.
+                         */
+                        pool = -2;
+
+                        __D("GETPOOL: no pool-based buffer available, "
+                            "returning heap \"pool\" instead (due to config "
+                            "override)\n");
+                    }
+                }
+            }
+
+            mutex_unlock(&cmem_mutex);
 
             if (pool == -1) {
                 __E("Failed to find a pool which fits %d\n", reqsize);
+
                 return -ENOMEM;
             }
 
@@ -1519,11 +1584,11 @@ static int ioctl(struct inode *inode, struct file *filp,
                 cmd & CMEM_WB ? "WB" : "", cmd & CMEM_INV ? "INV" : "",
                 virtp, physp);
 
-            if (down_interruptible(&cmem_mutex)) {
+            if (mutex_lock_interruptible(&cmem_mutex)) {
                 return -ERESTARTSYS;
             }
             entry = find_busy_entry(physp, &pool, &e, &bi);
-            up(&cmem_mutex);
+            mutex_unlock(&cmem_mutex);
             if (!entry) {
                 __E("CACHE%s%s: Failed to find allocated buffer at virtual %#lx\n",
                     cmd & CMEM_WB ? "WB" : "", cmd & CMEM_INV ? "INV" : "",
@@ -1547,7 +1612,13 @@ static int ioctl(struct inode *inode, struct file *filp,
             switch (cmd & ~CMEM_IOCMAGIC) {
               case CMEM_IOCCACHEWB:
 #ifdef USE_CACHE_VOID_ARG
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,34)
+                dmac_map_area((void *)virtp, block.size, DMA_TO_DEVICE);
+                outer_clean_range(__pa((u32)(void *)virtp),
+                                  __pa((u32)(void *)virtp + block.size));
+#else
                 dmac_clean_range((void *)virtp, (void *)virtp_end);
+#endif
 #else
                 dmac_clean_range(virtp, virtp_end);
 #endif
@@ -1558,7 +1629,13 @@ static int ioctl(struct inode *inode, struct file *filp,
 
               case CMEM_IOCCACHEINV:
 #ifdef USE_CACHE_VOID_ARG
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,34)
+                dmac_map_area((void *)virtp, block.size, DMA_FROM_DEVICE);
+                outer_inv_range(__pa((u32)(void *)virtp),
+                                __pa((u32)(void *)virtp + block.size));
+#else
                 dmac_inv_range((void *)virtp, (void *)virtp_end);
+#endif
 #else
                 dmac_inv_range(virtp, virtp_end);
 #endif
@@ -1569,7 +1646,13 @@ static int ioctl(struct inode *inode, struct file *filp,
 
               case CMEM_IOCCACHEWBINV:
 #ifdef USE_CACHE_VOID_ARG
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,34)
+                dmac_map_area((void *)virtp, block.size, DMA_BIDIRECTIONAL);
+                outer_flush_range(__pa((u32)(void *)virtp),
+                                  __pa((u32)(void *)virtp + block.size));
+#else
                 dmac_flush_range((void *)virtp, (void *)virtp_end);
+#endif
 #else
                 dmac_flush_range(virtp, virtp_end);
 #endif
@@ -1640,7 +1723,7 @@ static int ioctl(struct inode *inode, struct file *filp,
                 return -EFAULT;
             }
 
-            if (down_interruptible(&cmem_mutex)) {
+            if (mutex_lock_interruptible(&cmem_mutex)) {
                 return -ERESTARTSYS;
             }
 
@@ -1658,12 +1741,11 @@ static int ioctl(struct inode *inode, struct file *filp,
                  * the list multiple times (every time IOCREGUSER is called).
                  */
                 user = kmalloc(sizeof(struct registered_user), GFP_KERNEL);
-//              user->user = current;
                 user->filp = filp;
                 list_add(&user->element, &entry->users);
             }
 
-            up(&cmem_mutex);
+            mutex_unlock(&cmem_mutex);
 
             if (!entry) {
                 return -EFAULT;
@@ -1695,12 +1777,12 @@ static int mmap(struct file *filp, struct vm_area_struct *vma)
 
     physp = vma->vm_pgoff << PAGE_SHIFT;
 
-    if (down_interruptible(&cmem_mutex)) {
+    if (mutex_lock_interruptible(&cmem_mutex)) {
         return -ERESTARTSYS;
     }
 
     entry = find_busy_entry(physp, NULL, NULL, NULL);
-    up(&cmem_mutex);
+    mutex_unlock(&cmem_mutex);
 
     if (entry != NULL) {
         if (entry->flags & CMEM_CACHED) {
@@ -1767,7 +1849,7 @@ static int release(struct inode *inode, struct file *filp)
             __D("Forcing free on pool %d\n", i);
 
             /* acquire the mutex in case this isn't the last close */
-            if (down_interruptible(&cmem_mutex)) {
+            if (mutex_lock_interruptible(&cmem_mutex)) {
                 return -ERESTARTSYS;
             }
 
@@ -1838,7 +1920,7 @@ static int release(struct inode *inode, struct file *filp)
                 e = next;
             }
 
-            up(&cmem_mutex);
+            mutex_unlock(&cmem_mutex);
         }
     }
 
@@ -2084,6 +2166,11 @@ int __init cmem_init(void)
             heap_head[bi].size = heap_size[bi];
             header->next = NULL;
             header->size = heap_size[bi];
+
+            if (useHeapIfPoolUnavailable) {
+                printk(KERN_INFO "heap fallback enabled - will try heap if "
+                       "pool buffer is not available\n");
+            }
         }
         else {
             __D(KERN_INFO "no remaining memory for heap, no heap created "
@@ -2103,6 +2190,8 @@ int __init cmem_init(void)
     if (cmem_proc_entry) {
         cmem_proc_entry->proc_fops = &cmem_proc_ops;
     }
+
+    mutex_init(&cmem_mutex);
 
     printk(KERN_INFO "cmemk initialized\n");
 
@@ -2285,6 +2374,8 @@ MODULE_LICENSE("GPL");
 module_init(cmem_init);
 module_exit(cmem_exit);
 
+#if LINUX_VERSION_CODE < KERNEL_VERSION(2,6,34)
+
 /*
  * The following assembly functions were taken from
  *     arch/arm/mm/proc-arm926.S
@@ -2388,7 +2479,10 @@ arm926_dma_flush_range:\n \
         mov     pc, lr\n \
 ");
 
+#endif
+
 /*
- *  @(#) ti.sdo.linuxutils.cmem; 2, 2, 0,127; 3-10-2010 11:01:49; /db/atree/library/trees/linuxutils/linuxutils-f08x/src/
+ *  @(#) ti.sdo.linuxutils.cmem; 2, 2, 0,142; 11-30-2010 18:31:31; /db/atree/library/trees/linuxutils/linuxutils-j02x/src/ xlibrary
+
  */
 
