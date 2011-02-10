@@ -63,6 +63,16 @@ Example (Overo on OpenEmbedded):
 Configuration
 ====
 
+You can overlay the dvsdk with this repository
+
+    cd ~/dvsdk/dvsdk_3_01_00_10
+    git init
+    git remote add fastr git://github.com/fastr/ti-dvsdk-3-overlay.git
+    git fetch fastr
+    git checkout master -f
+
+Which essentially makes these changes:
+
 `~/dvsdk/dvsdk_3_01_00_10/Rules.make`
 
     * `DVSDK_INSTALL_DIR=$(HOME)/dvsdk/dvsdk_3_01_00_10`
