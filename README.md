@@ -43,10 +43,9 @@ I'll assume that you've downloaded the above to `~/Downloads` and that you accep
     ./dvsdk_3_01_00_10_Setup.bin --mode console --prefix ${DVSDKDIR}
     ./cs1omap3530_setupLinux_1_01_00-prebuilt-dvsdk3.01.00.10.bin --mode console --prefix ${DVSDKDIR}/dvsdk_3_01_00_10
     sudo ./ti_cgt_c6000_6.1.12_setup_linux_x86.bin --mode console
-    export C6000_C_DIR="/opt/TI/C6000CGT6.1.12/include;/opt/TI/C6000CGT6.1.12/lib"
-    export C6X_C_DIR=${C6000_C_DIR}
-    echo "export C6000_C_DIR=/opt/TI/C6000CGT6.1.12/include:/opt/TI/C6000CGT6.1.12/lib" >> ~/.bashrc
+    echo 'export C6000_C_DIR=/opt/TI/C6000CGT6.1.12/include:/opt/TI/C6000CGT6.1.12/lib' >> ~/.bashrc
     echo 'export C6X_C_DIR=${C6000_C_DIR}' >> ~/.bashrc
+    source ~/.bashrc
     
 Although `CSTOOL_PREFIX` should allow you to change your toolchain prefix, it's hard coded to `arm-none-linux-gnueabi` in some places.
 
