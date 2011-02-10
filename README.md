@@ -82,12 +82,12 @@ Test
     make everything
     make linux cmem sdma lpm dsplink
 
-[ti-dvsdk-3] http://software-dl.ti.com/dsps/dsps_public_sw/sdo_sb/targetcontent/dvsdk/DVSDK_3_00/latest/index_FDS.html
-[ti-cgt-6] http://software-dl.ti.com/dsps/dsps_public_sw/sdo_sb/targetcontent/dvsdk/DVSDK_3_00/latest/index_FDS.html
-[ti-dvsdk-3-data] http://software-dl.ti.com/dsps/dsps_public_sw/sdo_sb/targetcontent/dvsdk/DVSDK_3_00/latest/exports/data_dvsdk_3_01_00_10.tar.gz
-[ti-codec-server-1] http://software-dl.ti.com/dsps/dsps_public_sw/sdo_sb/targetcontent/dvsdk/DVSDK_3_00/latest/index_FDS.html
-[ti-am-psp-sdk-3] http://software-dl.ti.com/dsps/dsps_public_sw/psp/LinuxPSP/OMAP_03_00/03_00_01_06/index_FDS.html
-[cst-arm2009q1-203] http://www.codesourcery.com/sgpp/lite/arm/portal/package4571/public/arm-none-linux-gnueabi/arm-2009q1-203-arm-none-linux-gnueabi-i686-pc-linux-gnu.tar.bz2
-[dsplib-web] http://focus.ti.com/docs/toolsw/folders/print/sprc265.html
-[dsplib-direct] http://software-dl.ti.com/dsps/dsps_public_sw/c6000/web/c64p_dsplib/latest/exports//c64plus-dsplib_2_02_00_00_Linux-x86_Setup.bin
-[e2e-dsplib-howto] http://e2e.ti.com/support/embedded/f/354/p/60639/217114.aspx#217114
+[ti-dvsdk-3]: http://software-dl.ti.com/dsps/dsps_public_sw/sdo_sb/targetcontent/dvsdk/DVSDK_3_00/latest/index_FDS.html
+[ti-cgt-6]: http://software-dl.ti.com/dsps/dsps_public_sw/sdo_sb/targetcontent/dvsdk/DVSDK_3_00/latest/index_FDS.html
+[ti-dvsdk-3-data]: http://software-dl.ti.com/dsps/dsps_public_sw/sdo_sb/targetcontent/dvsdk/DVSDK_3_00/latest/exports/data_dvsdk_3_01_00_10.tar.gz
+[ti-codec-server-1]: http://software-dl.ti.com/dsps/dsps_public_sw/sdo_sb/targetcontent/dvsdk/DVSDK_3_00/latest/index_FDS.html
+[ti-am-psp-sdk-3]: http://software-dl.ti.com/dsps/dsps_public_sw/psp/LinuxPSP/OMAP_03_00/03_00_01_06/index_FDS.html
+[cst-arm2009q1-203]: http://www.codesourcery.com/sgpp/lite/arm/portal/package4571/public/arm-none-linux-gnueabi/arm-2009q1-203-arm-none-linux-gnueabi-i686-pc-linux-gnu.tar.bz2
+[dsplib-web]: http://focus.ti.com/docs/toolsw/folders/print/sprc265.html
+[dsplib-direct]: http://software-dl.ti.com/dsps/dsps_public_sw/c6000/web/c64p_dsplib/latest/exports//c64plus-dsplib_2_02_00_00_Linux-x86_Setup.bin
+[e2e-dsplib-howto]: http://e2e.ti.com/support/embedded/f/354/p/60639/217114.aspx#217114
