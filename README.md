@@ -69,12 +69,20 @@ Configuration
     * `DVSDK_INSTALL_DIR=$(HOME)/dvsdk/dvsdk_3_01_00_10`
     * `CODEGEN_INSTALL_DIR=/opt/TI/C6000CGT6.1.12`
     * `OMAP3503_SDK_INSTALL_DIR=$(HOME)/AM35x-OMAP35x-PSP-SDK-03.00.01.06`
-    * `CSTOOL_DIR=$(HOME)/CodeSourcery/Sourcery_G++_Lite`
+    * `CSTOOL_DIR=$(OVEROTOP)/tmp/sysroots/i686-linux/usr/armv7a`
     * `CSTOOL_PREFIX=$(CSTOOL_DIR)/bin/arm-angstrom-linux-gnueabi-`
+    * `LINUXKERNEL_INSTALL_DIR=$(OVEROTOP)/tmp/work/overo-angstrom-linux-gnueabi/linux-omap3-2.6.36`
+
+`~/dvsdk/dvsdk_3_01_00_10/Makefile`
+
+    * `LINUXKERNEL_CONFIG=omap3_defconfig`
+    * `UBOOT_CONFIG=omap3_overo_config`
 
 
 Test
 ====
+
+    bitbake x-load u-boot-omap3 linux-omap3-2.6.36
 
     cd ~/dvsdk/dvsdk_3_01_00_10
     make help
