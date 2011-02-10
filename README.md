@@ -69,7 +69,7 @@ You can overlay the dvsdk with this repository
     git init
     git remote add fastr git://github.com/fastr/ti-dvsdk-3-overlay.git
     git fetch fastr
-    git checkout master -f
+    git checkout overo -f
 
 Which essentially makes these changes:
 
