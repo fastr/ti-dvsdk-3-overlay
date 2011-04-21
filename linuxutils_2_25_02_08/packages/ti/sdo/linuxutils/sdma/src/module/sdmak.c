@@ -24,6 +24,7 @@
 #include <linux/proc_fs.h>
 #include <linux/dma-mapping.h>
 #include <linux/sched.h>
+#include <linux/semaphore.h>
 #include <linux/spinlock.h>
 #include <linux/errno.h>
 #include <linux/interrupt.h>
@@ -41,13 +42,27 @@
 #include <asm/hardware.h>
 #include <asm/arch/tc.h>
 #elif LINUX_VERSION_CODE < KERNEL_VERSION(2,6,32)
-#include <plat/hardware.h>
-#include <plat/dma.h>
-#include <plat/tc.h>
+#include <mach/hardware.h>
+#include <mach/dma.h>
+#include <mach/tc.h>
 #else
 #include <plat/hardware.h>
 #include <plat/dma.h>
 #include <plat/tc.h>
+#endif
+
+#if 0
+#  if LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,36)
+#  define USE_UNLOCKED_IOCTL
+#  else
+#  undef USE_UNLOCKED_IOCTL
+#  endif
+#else
+/*
+ * Just use it regardless of kernel version (since struct file_operations
+ * has contained unlocked_ioctl for a long time now).
+ */
+#  define USE_UNLOCKED_IOCTL
 #endif
 
 /*
@@ -143,8 +158,12 @@ static void dma_release_channel(int ch)
 }
 
 
-static int dma_ioctl(struct file *filp,
+#ifdef USE_UNLOCKED_IOCTL
+static long dma_ioctl(struct file *filp, unsigned int cmd, unsigned long args)
+#else
+static int dma_ioctl(struct inode *inode, struct file *filp,
                      unsigned int cmd, unsigned long args)
+#endif
 {
     unsigned int __user *argp = (unsigned int __user *) args;
     int result;
@@ -209,7 +228,7 @@ static int dma_ioctl(struct file *filp,
 
             up_read(&current->mm->mmap_sem);
 
-            init_MUTEX_LOCKED(&(channels[channel].mutex));
+            sema_init(&(channels[channel].mutex), 0);
             channels[channel].owner = filp;
 
             if (copy_to_user(argp, &channel, sizeof(channel))) {
@@ -286,9 +305,13 @@ static int dma_release(struct inode *inode, struct file * filp)
 }
 
 static struct file_operations fops = {
-    .unlocked_ioctl = dma_ioctl,
-    .release = dma_release,
-    .owner = THIS_MODULE
+#ifdef USE_UNLOCKED_IOCTL
+    unlocked_ioctl: dma_ioctl,
+#else
+    ioctl:   dma_ioctl,
+#endif
+    release: dma_release,
+    owner: THIS_MODULE
 };
 
 static void banner(void)
@@ -386,6 +409,6 @@ MODULE_AUTHOR("Texas Instruments");
 MODULE_DESCRIPTION("DMA operations from user mode");
 
 /*
- *  @(#) ti.sdo.linuxutils.sdma; 1, 0, 0,80; 3-10-2010 11:02:12; /db/atree/library/trees/linuxutils/linuxutils-f08x/src/
- */
+ *  @(#) ti.sdo.linuxutils.sdma; 1, 0, 0,95; 11-30-2010 18:31:50; /db/atree/library/trees/linuxutils/linuxutils-j02x/src/ xlibrary
 
+ */
