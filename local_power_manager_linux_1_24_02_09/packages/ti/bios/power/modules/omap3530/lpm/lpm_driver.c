@@ -245,7 +245,7 @@ static int __init lpm_init(void)
         lpm->inst[i].major = MAJOR(lpm->first);
         lpm->inst[i].minor = MINOR(lpm->first) + i;
         INIT_LIST_HEAD(&lpm->inst[i].clients);
-        init_MUTEX(&lpm->inst[i].sem);
+        sema_init(&lpm->inst[i].sem, 1);
         init_completion(&lpm->inst[i].event);
         lpm_devAttrs.os_instance = (void *)&lpm->inst[i];
         LPM_init(i, &lpm->inst[i].lpm, &lpm_devAttrs);
@@ -663,4 +663,3 @@ module_exit(lpm_exit);
 /*
  *  @(#) ti.bios.power; 1, 1, 1,1; 4-30-2010 13:19:43; /db/atree/library/trees/power/power-g09x/src/
  */
-
